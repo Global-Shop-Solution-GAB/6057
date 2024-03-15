@@ -1,0 +1,164 @@
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Coder: FEQ (Sisco)
+'Date: July 2020
+'Customer: Diversified Labeling Solutions
+'Contact: Heather Novosel (hnovosel@teamdls.com) and Brian Petersen (bpetersen@teamdls.com)
+'This project will duplicate parts from company code DLS to company code PTL. The script will run from the Script 2 button on Inventory Master.
+'The part creation will be done by changing copany codusing the F.Global.Inventory.CreatePart function
+
+F.Intrinsic.Control.Try
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	'Inventory Master (Script 2 Button)
+	F.Intrinsic.Control.Case(10120)
+		
+		V.Passed.000069.Set("Copy to PPL")
+'		V.Passed.000069.Set("Copy to TST")
+	
+	F.Intrinsic.Control.Case(10220)
+		
+		F.Intrinsic.Control.CallSub(Requirements)
+		
+		F.Intrinsic.UI.InvokeWaitDialog("Part duplication to company code 'PPL' in progress.")
+'		F.Intrinsic.UI.InvokeWaitDialog("Part duplication to company code 'TST' in progress.")
+		
+		'For them to test, we are copying over to TST
+'		F.Global.General.OverrideCompany("TST")
+		F.Global.General.OverrideCompany("PLA")
+'		F.Global.General.OverrideCompany("PPL")
+		
+		F.Intrinsic.Control.CallSub(PartCheck)
+		
+	'Testing internally
+	F.Intrinsic.Control.CaseElse
+		
+		'F.Intrinsic.String.GSSPartString(V.Passed.000007,V.Passed.000008,V.Global.sPart)
+		'V.Global.sLoc.Set(V.Passed.000009.String)
+		
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error, "Subroutine", V.Ambient.CurrentSubroutine)
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Error.Start
+F.Intrinsic.Control.Try
+V.Local.sError.Declare(String, "")
+
+F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}", V.Caller.ScriptFile, V.Ambient.Newline, V.Args.Subroutine, V.Ambient.ErrorNumber, V.Ambient.ErrorDescription, V.Ambient.GABVersion, V.Local.sError)
+
+F.Intrinsic.UI.CloseWaitDialog
+
+F.Intrinsic.UI.Msgbox(V.Local.sError, "PROBLEM DUPLICATING PART IN PPL COMPANY")
+'F.Intrinsic.UI.Msgbox(V.Local.sError, "PROBLEM DUPLICATING PART IN TST COMPANY")
+
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndTry
+Program.Sub.Error.End
+
+Program.Sub.PartCheck.Start
+F.Intrinsic.Control.Try
+V.Local.sPart.Declare(String, "")
+V.Local.sSql.Declare(String, "")
+V.Local.sMessage.Declare(String, "")
+
+F.Intrinsic.String.GSSPartString(V.Passed.000007,V.Passed.000008,V.Local.sPart)
+F.Intrinsic.String.Build("Select Part, Location from V_INVENTORY_MSTR where Part = '{0}' and Location = '{1}'", V.Local.sPart, V.Passed.000009, V.Local.sSql)
+
+F.ODBC.Connection!conx.OpenCompanyConnection
+
+F.Data.DataTable.CreateFromSQL("dtTSTPartCheck", "conx", V.Local.sSql)
+
+F.Intrinsic.Control.If(V.DataTable.dtTSTPartCheck.RowCount, =, 0)
+	F.Intrinsic.Control.CallSub(CreatePart, PART, V.Local.sPart)
+F.Intrinsic.Control.Else
+	F.Intrinsic.UI.CloseWaitDialog
+	F.Intrinsic.String.Build("Part '{0}' already exists in company code 'PPL'", V.Local.sPart.Trim, V.Local.sMessage)
+'	F.Intrinsic.String.Build("Part '{0}' already exists in company code 'TST'", V.Local.sPart.Trim, V.Local.sMessage)
+	F.Intrinsic.UI.Msgbox(V.Local.sMessage, "PART DUPLICATION ERROR")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Data.DataTable.Close("dtTSTPartCheck")
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error, "Subroutine", V.Ambient.CurrentSubroutine)
+F.Intrinsic.Control.EndTry
+Program.Sub.PartCheck.End
+
+Program.Sub.CreatePart.Start
+F.Intrinsic.Control.Try
+V.Local.sSourceCode.Declare(String, "")
+V.Local.sSql.Declare(String, "")
+
+F.Intrinsic.Control.SelectCase(V.Passed.000060.UCase)
+	F.Intrinsic.Control.Case("PURCH TO STOCK")
+		V.Local.sSourceCode.Set("P")
+	F.Intrinsic.Control.Case("PURCH TO JOB")
+		V.Local.sSourceCode.Set("J")
+	F.Intrinsic.Control.Case("MANUF TO STOCK")
+		V.Local.sSourceCode.Set("M")
+	F.Intrinsic.Control.Case("MANUF TO JOB")
+		V.Local.sSourceCode.Set("F")
+	F.Intrinsic.Control.Case("CONSIGN TO STOCK")
+		V.Local.sSourceCode.Set("C")
+	F.Intrinsic.Control.Case("CONSIGN TO JOB")
+		V.Local.sSourceCode.Set("G")
+	
+F.Intrinsic.Control.EndSelect
+
+F.Global.Inventory.CreatePart(V.Args.PART, V.Passed.000014, V.Passed.000012, V.Passed.000009, V.Passed.000011, V.Local.sSourceCode, "", "", V.Passed.000017.Float)
+
+'Now we need to update the cost..
+F.Intrinsic.String.Build("Update INVENTORY_MSTR set AMT_COST = '{0}' where PART = '{1}' and LOCATION = '{2}'", V.Passed.000018.Float, V.Args.PART, V.Passed.000009, V.Local.sSql)
+F.ODBC.Connection!conx.Execute(V.Local.sSql)
+
+F.Intrinsic.String.Build("Update INVENTORY_COST set COST = '{0}', MATL = '{0}' where PART = '{1}' and LOCN = '{2}'", V.Passed.000018.Float, V.Args.PART, V.Passed.000009, V.Local.sSql)
+F.ODBC.Connection!conx.Execute(V.Local.sSql)
+
+F.Intrinsic.UI.CloseWaitDialog
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error, "Subroutine", V.Ambient.CurrentSubroutine)
+F.Intrinsic.Control.EndTry
+Program.Sub.CreatePart.End
+
+Program.Sub.Requirements.Start
+F.Intrinsic.Control.Try
+
+F.Intrinsic.Control.If(V.Passed.000007,=,"")
+	F.Intrinsic.UI.Msgbox("Please Select a Part Number.", "INVENTORY DUPLICATION TO PPL")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.If(V.Passed.000014,=,"")
+	F.Intrinsic.UI.Msgbox("Please fill in the Unit of Measure.", "INVENTORY DUPLICATION TO PPL")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.If(V.Passed.000011,=,"")
+	F.Intrinsic.UI.Msgbox("Please select a product line.", "INVENTORY DUPLICATION TO PPL")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.If(V.Passed.000060,=,"")
+	F.Intrinsic.UI.Msgbox("Please select a source code.", "INVENTORY DUPLICATION TO PPL")
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+'F.Intrinsic.Control.If(V.Passed.000017.Float, = , 0)
+'	F.Intrinsic.UI.Msgbox("Please fill in the price.","INVENTORY DUPLICATION TO PPL")
+'	F.Intrinsic.Control.End
+'F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(Error, "Subroutine", V.Ambient.CurrentSubroutine)
+F.Intrinsic.Control.EndTry
+Program.Sub.Requirements.End
